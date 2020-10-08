@@ -1,0 +1,144 @@
+---
+title: "Homework 3"
+author: Leo Liu
+output: github_document
+---
+
+```{r}
+library(p8105.datasets)
+library(tidyverse)
+library(ggplot2)
+data("instacart")
+```
+
+Question 1.
+
+This data set contains information of online grocery orders. It has `r nrow(instacart)` entries and `r ncol(instacart)` variables. The variables include product and order identifiers, customer identifier, date and time the order was placed, product name, the department the product belongs to, and aisle where the product can be found, and if whether or not the product has been reordered. 
+```{r}
+instacart %>% 
+  count(aisle) %>% 
+  arrange(desc(n))
+```
+There are 134 aisles and the most orders come from fresh vegetables, then fruits, and so on.
+
+```{r}
+instacart %>% 
+  count(aisle) %>% 
+  filter(n > 10000) %>% 
+  mutate(
+    aisle = factor(aisle),
+    aisle = fct_reorder(aisle, n)
+  ) %>% 
+  ggplot(aes(x = aisle, y = n)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+
+```{r}
+instacart %>% 
+  filter(aisle %in% c("baking ingredients", "dog food care", "packaged vegetables fruits")) %>%
+  group_by(aisle) %>% 
+  count(product_name) %>% 
+  mutate(rank = min_rank((desc(n)))) %>% 
+  filter(rank < 4) %>% 
+  arrange(aisle, rank) %>% 
+  knitr::kable()
+
+```
+
+Apples vs ice cream
+dow means day of week
+```{r}
+instacart %>% 
+  filter(product_name %in% c("Pink Lady Apples", "Coffee Ice Cream")) %>% 
+  group_by(product_name, order_dow) %>% 
+  summarize(mean_hour = mean(order_hour_of_day)) %>% 
+  pivot_wider(
+    names_from = order_dow,
+    values_from = mean_hour
+  )
+```
+
+
+Question 2
+
+```{r}
+accel_df = read_csv("./accel_data.csv") %>% 
+  janitor::clean_names()
+  
+accel_df_long = accel_df %>% 
+  pivot_longer(activity_1:activity_1440,
+               names_to = "minute_of_the_day",
+               values_to = "activity_counts") %>% 
+  mutate(wkday_vs_wkend = ifelse(day %in% c("Saturday", "Sunday"), 
+                                 "weekend", "weekday"),
+         minute_of_the_day = as.numeric(substring(minute_of_the_day, 10))) %>% 
+  group_by(day) %>% 
+  mutate(total_act_day = sum(activity_counts))
+  
+  
+
+daily_act_tbl = accel_df_long %>% 
+  summarize(total_act_day = sum(activity_counts)) %>% 
+  arrange(total_act_day)
+  
+ggplot(accel_df_long, mapping = aes(x = minute_of_the_day, y = activity_counts, color = day)) + 
+  geom_line() +
+  labs(
+    title = "Total Activity Counts on Each Day",
+    x = "Minutes",
+    y = "Activity Counts"
+  ) +
+  viridis::scale_color_viridis(
+    name = "Days",
+    discrete = TRUE
+  ) +
+  theme_bw()
+```
+
+Question 3.  facet_wrap(~ day) 
+
+```{r}
+library(p8105.datasets)
+data("ny_noaa")
+```
+
+Tidying:
+Precipitation prcp is given in tenths of mm, snowfall in mm, snow depth in mm, tmax and tmin in tenths of degrees celsius. The most common value for snowfall is 0 mm.
+```{r}
+ny_noaa %>% 
+  separate("date", c("Year", "Month", "Day"), sep = "-") %>%
+  group_by(snow) %>% 
+  count(snow) %>% 
+  arrange(desc(n))
+```
+
+```{r}
+ny_noaa = ny_noaa %>%
+  separate("date", c("Year", "Month", "Day"), sep = "-") %>%
+  mutate(tmin = as.numeric(tmin),
+         tmax = as.numeric(tmax))
+
+ny_noaa_0107 = ny_noaa %>% 
+  filter(Month %in% c("01", "07")) %>% 
+  group_by(Year,Month) %>%
+  summarize(mean_t_max = mean(tmax, na.rm = TRUE))
+  
+ny_noaa_0107 %>% 
+  ggplot(mapping = aes(x = Year, y = mean_t_max, color = Month)) +
+  geom_point() +
+  facet_wrap(~ Month)
+
+ny_noaa %>% 
+  ggplot(mapping = aes(x = tmin, y = tmax, color = Year)) +
+  geom_boxplot()
+
+ny_noaa %>% 
+  filter(snow > 0, snow < 100) %>% 
+  group_by(Year) %>% 
+  ggplot(mapping = aes(x = Year, color = Year)) +
+  geom_histogram(stat = 'identity', aes(y = snow), fill = "white")
+
+```
+
