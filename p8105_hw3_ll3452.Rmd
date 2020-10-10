@@ -73,20 +73,37 @@ accel_df_long = accel_df %>%
                values_to = "activity_counts") %>% 
   mutate(wkday_vs_wkend = ifelse(day %in% c("Saturday", "Sunday"), 
                                  "weekend", "weekday"),
-         minute_of_the_day = as.numeric(substring(minute_of_the_day, 10))) %>% 
-  group_by(day) %>% 
+         minute_of_the_day = as.numeric(substring(minute_of_the_day, 10)),
+         week = as.character(week) %>% 
+           forcats::fct_relevel(as.character(1:5)),
+         day = forcats::fct_relevel(day,
+                         c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"))
+         ) %>% 
+  group_by(week, day) %>%
   mutate(total_act_day = sum(activity_counts))
+```  
   
-  
+The dataset originally contains activity week, day, minute, and activity counts. After tidying, the dataset includes the variable 'minute_of_day' which shows the minute when the activity is performed. The variable 'activity_counts' shows the amount of activity performed. I have pivoted the data from wide to long, and added a variable that indicates if whether or not the day of activity is a weekday. The tidied data consists of `r nrow(accel_df_long)` entries and `r ncol(accel_df_long)` variables. 
 
-daily_act_tbl = accel_df_long %>% 
-  summarize(total_act_day = sum(activity_counts)) %>% 
-  arrange(total_act_day)
-  
-ggplot(accel_df_long, mapping = aes(x = minute_of_the_day, y = activity_counts, color = day)) + 
-  geom_line() +
+```{r}
+accel_df_long %>% 
+  group_by(week, day) %>% 
+  summarise(total_act_day = sum(activity_counts)) %>%
+  pivot_wider(names_from = day,
+              values_from = total_act_day) %>% 
+  knitr::kable()
+```
+
+There isn't any apparent trend from the table. I was expecting more activity counts during weekend, and less during weekdays. However, this is only (partially) true for the second week. On the last two weeks, least activity counts are recorded on Saturdays. It does not seem like a person favors any day to do activities.  
+
+```{r}
+ggplot(accel_df_long, mapping = aes(x = minute_of_the_day, 
+                                    y = activity_counts, 
+                                    color = day)) +
+  stat_smooth(geom = "line", se = FALSE) +
+  scale_y_continuous(trans = "sqrt") +
   labs(
-    title = "Total Activity Counts on Each Day",
+    title = "Total Activity Counts on Each Day (by minutes)",
     x = "Minutes",
     y = "Activity Counts"
   ) +
@@ -96,8 +113,10 @@ ggplot(accel_df_long, mapping = aes(x = minute_of_the_day, y = activity_counts, 
   ) +
   theme_bw()
 ```
+From this plot, we are able to see that the most active times are during 500th to 1250th minute, which corresponds to roughly 8 am in the morning to 9 pm in the evening. Activity counts vanish at midnight, when the person goes to sleep. We can see that there are at least two peaks for the trendlines everyday. On Sunday, the highest activity count is recorded in the morning, at roughly 650 minutes into the day. More activities seem to be done in the evening. 
 
-Question 3.  facet_wrap(~ day) 
+
+Question 3.
 
 ```{r}
 library(p8105.datasets)
@@ -111,34 +130,57 @@ ny_noaa %>%
   separate("date", c("Year", "Month", "Day"), sep = "-") %>%
   group_by(snow) %>% 
   count(snow) %>% 
-  arrange(desc(n))
+  arrange(desc(n)) %>% 
+  knitr::kable()
 ```
 
 ```{r}
 ny_noaa = ny_noaa %>%
   separate("date", c("Year", "Month", "Day"), sep = "-") %>%
-  mutate(tmin = as.numeric(tmin),
-         tmax = as.numeric(tmax))
+  mutate(across(Year:tmin, as.numeric),
+         across(tmax:tmin, function(x) x/10)) %>% 
+  mutate(snow = ifelse(snow < 0, 0, snow))
 
 ny_noaa_0107 = ny_noaa %>% 
-  filter(Month %in% c("01", "07")) %>% 
-  group_by(Year,Month) %>%
+  filter(Month %in% c(1, 7)) %>% 
+  group_by(id, Year,Month) %>%
   summarize(mean_t_max = mean(tmax, na.rm = TRUE))
   
-ny_noaa_0107 %>% 
-  ggplot(mapping = aes(x = Year, y = mean_t_max, color = Month)) +
+ny_noaa_0107 %>%
+  drop_na() %>% 
+  ggplot(mapping = aes(x = Year, y = mean_t_max, color = id, group = id)) +
   geom_point() +
+  geom_path() +
+  scale_x_continuous(breaks = seq(1981, 2010, 2),
+                     limits = c(1981, 2010))+
+  labs(title = "Average Maximum Temperature (in deg Celsius) for Each Station on Jan and July across Years.",
+       x = "Years",
+       y = "Average Maximum Temperature") +
+  theme(legend.position = "none") +
   facet_wrap(~ Month)
+```
+From the graphs, we can see a lot of up and downs in the average maximum temperature across the years. It is hard to conclude that the average maximum temperature is rising or lowering. The coldest years are 1994 and 2004; in those two years, the average maximum temperatures for January are around -12 degrees celsius. Some outliers include the outlier in 1982, 2004 and 2005. For July, we see a notable outlier in 1988. The highest average temperature is less than 15 degrees celsius for that particular outlier. Two other notable outliers are in the years 2004 and 2007. The years with the highest average max temperature are 1999 and 2010. 
+```{r}
 
-ny_noaa %>% 
+library(patchwork)
+plot3 = ny_noaa %>%
   ggplot(mapping = aes(x = tmin, y = tmax, color = Year)) +
-  geom_boxplot()
+  geom_point() +
+  labs(title = "Max vs Min Average Temperature",
+       x = "Min average temperature in degrees celsius",
+       y = "Max average temperature in degrees celsius") +
+  theme_bw()
 
-ny_noaa %>% 
-  filter(snow > 0, snow < 100) %>% 
+plot4 = ny_noaa %>% 
+  filter(between(snow, 1,100)) %>% 
   group_by(Year) %>% 
-  ggplot(mapping = aes(x = Year, color = Year)) +
-  geom_histogram(stat = 'identity', aes(y = snow), fill = "white")
+  ggplot(mapping = aes(x = Year, y = snow, color = Year, group = Year)) +
+   geom_boxplot() +
+  labs(title = "Snow fall by Year",
+       x = "Year",
+       y = "Snowfall in mm") +
+  theme_bw()
+
+plot3 / plot4
 
 ```
-
